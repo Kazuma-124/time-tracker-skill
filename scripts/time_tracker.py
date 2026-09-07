@@ -94,6 +94,7 @@ def acquire_db_lock():
         print("[警告] 无法获取数据库锁，可能有其他进程正在写入")
         return None
 
+
 def release_db_lock(lock_file):
     """释放数据库文件锁。"""
     if lock_file and _HAS_FCNTL:
@@ -290,7 +291,7 @@ def upload_db_to_lark():
         return False
     print("[数据库上传] 正在将空数据库上传到飞书云空间...")
     result = subprocess.run(
-        [sys.executable, backup_script, "--skip-skill", "--force"],
+        [sys.executable, backup_script, "--force"],
         capture_output=True, text=True
     )
     if result.returncode == 0:
@@ -373,7 +374,7 @@ def backup_database():
     for attempt in range(5):
         try:
             result = subprocess.run(
-                [sys.executable, str(backup_script), "--skip-skill"],
+                [sys.executable, str(backup_script)],
                 capture_output=True,
                 text=True,
                 timeout=90
@@ -412,7 +413,7 @@ def backup_database():
     print()
     print("  本地数据库将保留，不会被删除。")
     print("  建议: 稍后手动运行以下命令进行备份:")
-    print(f"    python3 {backup_script} --skip-skill")
+    print(f"    python3 {backup_script}")
     print("=" * 60)
     return False
 
@@ -594,8 +595,10 @@ def ensure_current_event(conn):
 def now_iso():
     return datetime.now(TZ).isoformat()
 
+
 def parse_iso(s):
     return datetime.fromisoformat(s)
+
 
 def format_duration(minutes):
     if minutes < 60:
@@ -627,6 +630,7 @@ def load_aliases(conn):
     rows = conn.execute("SELECT alias, standard_name FROM aliases").fetchall()
     return {r["alias"]: r["standard_name"] for r in rows}
 
+
 def cmd_aliases_list(args):
     init_db()
     with get_db() as conn:
@@ -638,6 +642,7 @@ def cmd_aliases_list(args):
     for alias, standard in sorted(aliases.items()):
         print(f"  '{alias}' → '{standard}'")
     print(f"\n共 {len(aliases)} 条映射")
+
 
 def cmd_alias_add(args):
     alias = args.alias.strip()
@@ -853,6 +858,7 @@ def get_category_children(categories, parent_id):
     """获取指定父分类的直接子分类列表"""
     return [c for c in categories if c["parent_id"] == parent_id]
 
+
 def get_category_descendants(categories, parent_id):
     """获取指定父分类的所有后代分类（递归）"""
     result = []
@@ -860,6 +866,7 @@ def get_category_descendants(categories, parent_id):
         result.append(child)
         result.extend(get_category_descendants(categories, child["id"]))
     return result
+
 
 def get_category_tree(categories):
     """构建分类树结构，返回顶级分类列表（每个分类含 children 字段）"""
@@ -876,6 +883,7 @@ def get_category_tree(categories):
                 # 父分类不存在，提升为顶级
                 roots.append(cat_map[c["id"]])
     return roots
+
 
 def print_category_tree(node, indent=0):
     """递归打印分类树"""
@@ -905,6 +913,7 @@ def load_standard_names(conn):
         "updated_at": r["updated_at"]
     } for r in rows]
 
+
 def get_standard_name(conn, name):
     """查询标准名，返回标准名信息字典或 None。
     
@@ -914,6 +923,7 @@ def get_standard_name(conn, name):
     if row:
         return {"id": row["id"], "name": row["name"], "category_id": row["category_id"]}
     return None
+
 
 def resolve_standard_name(conn, raw_name):
     """将原始名解析为标准名。
@@ -954,6 +964,7 @@ def get_category_name_for_standard(conn, standard_name):
         return row["category_name"]
     return "其他"
 
+
 def resolve_event_category(conn, raw_name):
     """通过原始名→标准名→分类的路径，实时解析事件的分类。
     
@@ -963,6 +974,7 @@ def resolve_event_category(conn, raw_name):
     if std_info:
         return get_category_name_for_standard(conn, std_info["name"])
     return "其他"
+
 
 def build_event_category_map(conn, event_names):
     """批量构建事件名称→分类的映射，用于统计查询。"""
@@ -1012,6 +1024,7 @@ def has_category_cycle(conn, category_id, parent_id):
             break
         current = row["parent_id"]
     return False
+
 
 def cmd_categories_list(args):
     init_db()
