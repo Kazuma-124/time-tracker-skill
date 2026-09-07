@@ -1,6 +1,6 @@
 ---
 name: time-tracker
-version: 3.19.0
+version: 3.19.1
 description: 柳比歇夫时间统计法追踪工具。在云电脑工作模式对话中，通过时间节点法记录事件起止时间，自动计算时长，并提供日/周/月/季度/年度统计、事件平均时长查询、事件名称与分类管理、季度分类评审。当用户声明本对话用于时间统计、输入事件名称表示切换任务、要求统计时间花费、查询做某事通常多久、管理事件名称或分类、季度评审时使用。数据持久化在 SQLite 数据库，对话仅作为输入接口。
 ---
 
@@ -17,7 +17,7 @@ description: 柳比歇夫时间统计法追踪工具。在云电脑工作模式�
 ## 脚本路径
 
 ```
-<skill_dir>/scripts/time_tracker.py
+<script_dir>/scripts/time_tracker.py
 ```
 
 所有命令通过 `python3 <script_path> <command>` 调用。
@@ -369,6 +369,7 @@ python3 <script> quarterly-review
 - `idx_aliases_standard` ON aliases(standard_name) — 原始名反向查询加速
 - `idx_standard_names_category` ON standard_names(category_id) — 按分类查询标准名加速
 
+#
 ## 数据同步机制
 
 ### 核心原则
@@ -402,7 +403,7 @@ python3 <launcher_dir>/scripts/pull_from_github.py
    - 修改操作：在本地事务中修改数据库
     ↓
 3. 修改操作：上传到飞书
-   - 调用 backup_to_lark.py --skip-skill
+   - 调用 backup_to_lark.py（无参数，仅备份数据库）
    - 上传本地数据库到飞书
    - 验证上传成功（下载回来检查完整性）
    - 清理飞书上的旧版本文件
@@ -540,7 +541,7 @@ python3 <script_dir>/backup_to_lark.py --cleanup
 
 > **注意**：统计任务配置（`config/stats-task.json`）已包含在技能代码中，随技能一起从 GitHub 拉取，无需单独备份。
 
-**数据库备份文件名**：`time-tracker-db-{最新事件完成时间}.db`（如 `time-tracker-db-20260903_010643.db`）
+**数据库备份文件名**：`time-tracker-db-{上传时间戳}.db`（如 `time-tracker-db-20260903_010643.db`）
 
 **安全检查（防止数据丢失）**：
 - 备份前检查本地数据库的事件记录数
