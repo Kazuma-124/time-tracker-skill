@@ -1,6 +1,6 @@
 ---
 name: time-tracker
-version: 3.18.0
+version: 3.19.0
 description: 柳比歇夫时间统计法追踪工具。在云电脑工作模式对话中，通过时间节点法记录事件起止时间，自动计算时长，并提供日/周/月/季度/年度统计、事件平均时长查询、事件名称与分类管理、季度分类评审。当用户声明本对话用于时间统计、输入事件名称表示切换任务、要求统计时间花费、查询做某事通常多久、管理事件名称或分类、季度评审时使用。数据持久化在 SQLite 数据库，对话仅作为输入接口。
 ---
 
@@ -45,7 +45,6 @@ description: 柳比歇夫时间统计法追踪工具。在云电脑工作模式�
 | `standard-names` | 列出所有标准名及其分类 |
 | `add-standard-name "<名称>" --category "<分类>" [--description "..."]` | 创建新的标准名（分类必填，分类名可与标准名相同） |
 | `set-standard-category "<标准名>" "<新分类>"` | 修改标准名的分类 |
-| `remove-standard-name "<名称>"` | 删除标准名（仅当无原始名映射时） |
 | `categories` | 列出所有分类（树形结构） |
 | `add-category "<名称>" [--parent "<父分类>"] [--description "..."]` | 添加分类 |
 | `remove-category "<名称>"` | 删除分类 |
@@ -373,9 +372,21 @@ python3 <script> quarterly-review
 ## 数据同步机制
 
 ### 核心原则
-**飞书云空间是唯一的权威数据源**，本地数据库只是临时工作区，操作完成后立即删除。
+**混合存储架构**：
+- **技能代码**（SKILL.md、脚本、config）存储在 GitHub 私有仓库 `Kazuma-124/time-tracker-skill`，通过 git 进行版本控制
+- **数据库文件**（SQLite）存储在飞书云空间，作为唯一的权威数据源
+- 本地数据库只是临时工作区，操作完成后立即删除
 
-### 每次操作的完整流程
+### 技能代码同步
+技能代码通过 time-tracker-launcher 从 GitHub 拉取：
+```bash
+python3 <launcher_dir>/scripts/pull_from_github.py
+```
+- 认证方式：环境变量 `GITHUB_TOKEN`（fine-grained PAT，需 Contents Read 权限）
+- 对比 VERSION 文件，版本一致时跳过
+- 修改技能后需手动 commit + push 到 GitHub
+
+### 数据库同步（每次操作的完整流程）
 
 ```
 用户执行命令（如 start / stats / add-alias 等）
@@ -446,17 +457,19 @@ python3 <script> quarterly-review
 - **次版本号**：向下兼容的功能性新增
 - **修订号**：向下兼容的问题修正
 
-**每次修改技能后，必须更新 VERSION 文件中的版本号，然后备份技能到飞书**：
+**每次修改技能后，必须更新 VERSION 文件中的版本号，然后 push 到 GitHub**：
 ```bash
-python3 <script_dir>/backup_to_lark.py --backup-skill
+# 1. 修改技能文件
+# 2. 更新 VERSION 文件中的版本号
+# 3. commit + push 到 GitHub
+git add -A
+git commit -m "描述修改内容"
+git push origin main
 ```
 
-备份脚本会自动比较本地与飞书的技能版本：
-- **本地版本更新** → 自动将技能打包备份到飞书
-- **飞书版本更新** → 自动从飞书下载并替换本地技能
-- **版本相同** → 不做操作
+技能代码仓库：`Kazuma-124/time-tracker-skill`（私有，分支 main）
 
-飞书备份文件名：`time-tracker-skill-v{版本号}.tar.gz`（如 `time-tracker-skill-v1.19.0.tar.gz`）
+> **注意**：技能代码不再备份到飞书云空间，GitHub 是技能代码的唯一存储和版本控制平台。数据库仍备份到飞书云空间。
 
 ### 数据库初始化流程
 
@@ -489,7 +502,7 @@ current 表中的"工作"事件正确恢复
 
 ### 统一数据库修改入口（db_transaction）
 
-所有对数据库有写入操作的命令（start、stop、rename-current、rename-event、add-alias、remove-alias、add-category、remove-category、add-standard-name、set-standard-category、remove-standard-name）都通过统一的 `db_transaction` 上下文管理器执行，保证完整流程：
+所有对数据库有写入操作的命令（start、stop、rename-current、rename-event、add-alias、remove-alias、add-category、remove-category、add-standard-name、set-standard-category）都通过统一的 `db_transaction` 上下文管理器执行，保证完整流程：
 
 1. **拉取**：从飞书拉取最新数据库覆盖本地
 2. **修改**：在本地执行数据库修改操作
@@ -512,7 +525,7 @@ current 表中的"工作"事件正确恢复
 ### 备份脚本
 
 ```bash
-# 完整备份（技能版本同步 + 数据库备份）
+# 备份数据库到飞书
 python3 <script_dir>/backup_to_lark.py
 
 # 强制备份数据库（跳过安全检查）
@@ -521,20 +534,11 @@ python3 <script_dir>/backup_to_lark.py --force
 # 从飞书恢复数据库
 python3 <script_dir>/backup_to_lark.py --restore
 
-# 备份技能到飞书
-python3 <script_dir>/backup_to_lark.py --backup-skill
-
-# 从飞书恢复技能
-python3 <script_dir>/backup_to_lark.py --restore-skill
-
-# 跳过技能同步，只备份数据库
-python3 <script_dir>/backup_to_lark.py --skip-skill
-
-# 清理飞书上的重复/损坏备份文件
+# 清理飞书上的重复/损坏数据库备份文件
 python3 <script_dir>/backup_to_lark.py --cleanup
 ```
 
-> **注意**：统计任务配置（`config/stats-task.json`）已包含在技能备份中，随技能一起备份和恢复，无需单独操作。
+> **注意**：统计任务配置（`config/stats-task.json`）已包含在技能代码中，随技能一起从 GitHub 拉取，无需单独备份。
 
 **数据库备份文件名**：`time-tracker-db-{最新事件完成时间}.db`（如 `time-tracker-db-20260903_010643.db`）
 
@@ -561,7 +565,7 @@ python3 <skill_dir>/scripts/backup_to_lark.py --restore
 ### 飞书云空间信息
 
 - 备份根文件夹：「时间统计备份」
-- 子文件夹：「数据库备份」、「技能实现备份」、「统计任务」
+- 子文件夹：「数据库备份」（仅存储数据库文件，技能代码已迁移到 GitHub）
 
 ## 定时任务集成
 
@@ -575,10 +579,11 @@ python3 <skill_dir>/scripts/backup_to_lark.py --restore
 若同一天有多项统计，按优先级执行：日 > 周 > 月 > 季度 > 年。
 
 定时任务触发后，模型应：
-1. 从飞书恢复最新技能和数据库
-2. 执行统计
-3. 运行 name-check 进行名称与分类管理
-4. 整理报告发送给用户
+1. 从 GitHub 拉取最新技能代码（通过 pull_from_github.py 或 MCP 工具）
+2. 从飞书恢复最新数据库
+3. 执行统计
+4. 运行 name-check 进行名称与分类管理
+5. 整理报告发送给用户
 
 ## 注意事项
 
