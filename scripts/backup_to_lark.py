@@ -35,10 +35,21 @@ def run_cmd(cmd, cwd=None):
     output = result.stdout.strip()
     if result.returncode != 0:
         return {"ok": False, "error": (result.stderr.strip() or output)[:500]}
+    # 尝试完整解析
     try:
         return json.loads(output)
     except json.JSONDecodeError:
-        return {"ok": True, "raw": output}
+        pass
+    # lark-cli 可能在 JSON 后输出额外提示文本（如 "The workspace directory is..."），
+    # 尝试提取第一个 '{' 到最后一个 '}' 之间的 JSON 内容
+    start = output.find('{')
+    end = output.rfind('}')
+    if start != -1 and end != -1 and end > start:
+        try:
+            return json.loads(output[start:end+1])
+        except json.JSONDecodeError:
+            pass
+    return {"ok": True, "raw": output}
 
 def list_remote_files(folder_token):
     cmd = f'lark-cli drive files list --params \'{{"folder_token": "{folder_token}", "page_size": 50}}\''
