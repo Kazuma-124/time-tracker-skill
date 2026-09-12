@@ -16,19 +16,34 @@ import time
 import re
 from datetime import datetime
 
-_DEFAULT_DATA_DIR = os.path.join(os.path.expanduser("~"), ".super_doubao", "super-doubao-runtime", "workspace", "time-tracker-data")
-DB_PATH = os.path.join(os.environ.get("TIME_TRACKER_DATA_DIR", _DEFAULT_DATA_DIR), "time-tracker.db")
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SKILL_DIR = os.path.dirname(SCRIPT_DIR)
+CONFIG_PATH = os.path.join(SKILL_DIR, "config", "config.json")
 
-FOLDER_TOKEN = "A3xkf1WSwlD33edABotcH70SnZd"
-DB_FOLDER_TOKEN = "A1qHfIqK7lvzf6dSgRtcgJ6Inbe"
+def load_config():
+    """从 config/config.json 加载配置。失败时直接报错，不使用默认值兜底。"""
+    try:
+        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        raise RuntimeError(f"配置文件不存在: {CONFIG_PATH}")
+    except json.JSONDecodeError as e:
+        raise RuntimeError(f"配置文件格式错误: {e}")
+    except Exception as e:
+        raise RuntimeError(f"配置文件加载失败: {e}")
 
-DB_FILE_PREFIX = "time-tracker-db-"
+_CONFIG = load_config()
+_LARK = _CONFIG["lark"]
 
-SAFE_MIN_RECORDS = 3
-MAX_RETRIES = 3
-RETRY_DELAY = 2
+_DEFAULT_DATA_DIR = os.path.expanduser(_CONFIG["data_dir"])
+DB_PATH = os.path.join(os.environ.get("TIME_TRACKER_DATA_DIR", _DEFAULT_DATA_DIR), "time-tracker.db")
+
+FOLDER_TOKEN = _LARK["skill_folder_token"]
+DB_FOLDER_TOKEN = _LARK["db_folder_token"]
+DB_FILE_PREFIX = _LARK["db_file_prefix"]
+SAFE_MIN_RECORDS = _LARK["safe_min_records"]
+MAX_RETRIES = _LARK["max_retries"]
+RETRY_DELAY = _LARK["retry_delay_seconds"]
 
 def run_cmd(cmd, cwd=None):
     result = subprocess.run(cmd, shell=True, capture_output=True, text=True, cwd=cwd)
@@ -170,15 +185,15 @@ def backup_with_verification(local_path, filename, folder_token, validate_func, 
 
 def do_db_backup(force=False):
     if not os.path.exists(DB_PATH):
-        print("[数据库备份] 跳过: 文件不存在")
-        return True
+        print("[数据库备份] ❌ 失败: 数据库文件不存在")
+        return False
     local_count = get_local_record_count()
     print(f"[数据库备份] 本地记录数: {local_count}, 大小: {os.path.getsize(DB_PATH)/1024:.1f}KB")
     remote_files = find_files_by_prefix(DB_FILE_PREFIX, DB_FOLDER_TOKEN)
     if not force and remote_files:
         if local_count == 0 or (0 < local_count < SAFE_MIN_RECORDS):
-            print(f"[数据库备份] ⚠️  本地记录数较少({local_count}条)，跳过")
-            return True
+            print(f"[数据库备份] ❌ 失败: 本地记录数过少({local_count}条)，为保护飞书数据拒绝上传")
+            return False
     filename = f"{DB_FILE_PREFIX}{get_db_version_tag()}.db"
     print(f"[数据库备份] 目标: {filename}")
     existing = [f for f in remote_files if f.get("name") == filename]
