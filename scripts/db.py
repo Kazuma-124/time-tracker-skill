@@ -97,10 +97,10 @@ def get_db():
     if os.path.exists(config.DB_PATH):
         valid, err = check_db_integrity()
         if not valid:
-            print(f"[数据库错误] 本地数据库损坏: {err}")
-            print("[数据库错误] 尝试从飞书恢复...")
+            print(f"[数据库错误] 本地数据库损坏: {err}", file=sys.stderr)
+            print("[数据库错误] 尝试从飞书恢复...", file=sys.stderr)
             if restore_db_from_lark():
-                print("[数据库错误] 已从飞书恢复数据库")
+                print("[数据库错误] 已从飞书恢复数据库", file=sys.stderr)
             else:
                 raise RuntimeError(f"本地数据库损坏且无法从飞书恢复: {err}")
     conn = sqlite3.connect(str(config.DB_PATH))
@@ -163,7 +163,7 @@ def db_transaction():
     # 4. 上传修改后的数据库到飞书（含验证和旧版本清理）
     config.LAST_BACKUP_SUCCESS = backup_database()
     if not config.LAST_BACKUP_SUCCESS:
-        print("[数据安全] 备份失败，本地数据库将保留，不会被删除")
+        print("[数据安全] 备份失败，本地数据库将保留，不会被删除", file=sys.stderr)
     # 注意：不在此处删除本地数据库，因为命令函数可能在 db_transaction 之后还需要访问数据库
     # 本地数据库的统一清理在 main 函数的 finally 块中进行
 
@@ -172,18 +172,18 @@ def restore_db_from_lark():
     """从飞书云空间恢复数据库。返回 True 表示恢复成功。"""
     backup_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backup_to_lark.py")
     if not os.path.exists(backup_script):
-        print(f"[数据库恢复] 错误: 备份脚本不存在: {backup_script}")
+        print(f"[数据库恢复] 错误: 备份脚本不存在: {backup_script}", file=sys.stderr)
         return False
-    print("[数据库恢复] 正在从飞书云空间拉取最新数据库...")
+    print("[数据库恢复] 正在从飞书云空间拉取最新数据库...", file=sys.stderr)
     result = subprocess.run(
         [sys.executable, backup_script, "--restore"],
         capture_output=True, text=True
     )
     if result.returncode == 0 and os.path.exists(config.DB_PATH):
-        print("[数据库恢复] ✅ 成功从飞书恢复数据库")
+        print("[数据库恢复] ✅ 成功从飞书恢复数据库", file=sys.stderr)
         return True
     else:
-        print(f"[数据库恢复] 飞书无备份或恢复失败: {result.stderr.strip()[:200] or result.stdout.strip()[:200]}")
+        print(f"[数据库恢复] 飞书无备份或恢复失败: {result.stderr.strip()[:200] or result.stdout.strip()[:200]}", file=sys.stderr)
         return False
 
 
@@ -218,10 +218,10 @@ def cleanup_local_db():
                 os.remove(f)
                 cleaned.append(os.path.basename(f))
             except Exception as e:
-                print(f"[清理] 警告: 无法删除 {os.path.basename(f)}: {e}")
+                print(f"[清理] 警告: 无法删除 {os.path.basename(f)}: {e}", file=sys.stderr)
     
     if cleaned:
-        print(f"[清理] 已删除本地临时数据库文件: {', '.join(cleaned)}")
+        print(f"[清理] 已删除本地临时数据库文件: {', '.join(cleaned)}", file=sys.stderr)
 
 
 def sync_db_from_lark():
@@ -232,8 +232,8 @@ def sync_db_from_lark():
     """
     backup_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backup_to_lark.py")
     if not os.path.exists(backup_script):
-        print("[数据同步] ❌ 备份脚本不存在，无法从飞书拉取数据库")
-        print(f"  期望路径: {backup_script}")
+        print("[数据同步] ❌ 备份脚本不存在，无法从飞书拉取数据库", file=sys.stderr)
+        print(f"  期望路径: {backup_script}", file=sys.stderr)
         return False
     
     # 如果本地有数据库，先备份（防止拉取失败导致数据丢失）
@@ -257,11 +257,11 @@ def sync_db_from_lark():
         # 拉取失败，恢复本地备份
         if local_backup and os.path.exists(local_backup):
             shutil.move(local_backup, config.DB_PATH)
-            print("[数据同步] ⚠️  从飞书拉取失败，已恢复本地数据库")
+            print("[数据同步] ⚠️  从飞书拉取失败，已恢复本地数据库", file=sys.stderr)
         else:
-            print("[数据同步] ❌ 从飞书拉取失败，且无本地备份")
+            print("[数据同步] ❌ 从飞书拉取失败，且无本地备份", file=sys.stderr)
         err = result.stderr.strip() or result.stdout.strip()
-        print(f"  详情: {err[:200]}")
+        print(f"  详情: {err[:200]}", file=sys.stderr)
         return False
 
 
@@ -272,7 +272,7 @@ def upload_db_to_lark():
     请使用 backup_database()，它包含完整性检查和安全检查（飞书有备份时禁止上传空数据库）。
     此函数保留仅为向后兼容，内部调用 backup_database()。
     """
-    print("[数据库上传] 警告: upload_db_to_lark() 已废弃，请使用 backup_database()")
+    print("[数据库上传] 警告: upload_db_to_lark() 已废弃，请使用 backup_database()", file=sys.stderr)
     return backup_database()
 
 
@@ -300,14 +300,14 @@ def init_db():
             _init_db_tables(conn)
             ensure_current_event(conn)
     except Exception as e:
-        print(f"[初始化错误] 数据库初始化失败: {e}")
-        print("[初始化错误] 尝试从飞书恢复...")
+        print(f"[初始化错误] 数据库初始化失败: {e}", file=sys.stderr)
+        print("[初始化错误] 尝试从飞书恢复...", file=sys.stderr)
         if restore_db_from_lark():
             with get_db() as conn:
                 _init_db_tables(conn)
                 ensure_current_event(conn)
         else:
-            print("[初始化错误] 无法恢复数据库，请检查飞书备份")
+            print("[初始化错误] 无法恢复数据库，请检查飞书备份", file=sys.stderr)
             raise
 
 
@@ -320,21 +320,21 @@ def backup_database():
     测试模式下跳过备份，避免测试数据污染生产备份。
     """
     if config.TEST_MODE:
-        print("[测试模式] 跳过飞书备份（测试数据不污染生产备份）")
+        print("[测试模式] 跳过飞书备份（测试数据不污染生产备份）", file=sys.stderr)
         return True
     
     backup_script = config.SCRIPT_DIR / "backup_to_lark.py"
     if not backup_script.exists():
-        print("[备份错误] 备份脚本不存在，无法备份")
-        print("[备份错误] 本地数据库将保留，请稍后手动运行 backup_to_lark.py 进行备份")
+        print("[备份错误] 备份脚本不存在，无法备份", file=sys.stderr)
+        print("[备份错误] 本地数据库将保留，请稍后手动运行 backup_to_lark.py 进行备份", file=sys.stderr)
         return False
 
     # 备份前检查数据库完整性
     valid, err = check_db_integrity()
     if not valid:
-        print(f"[备份错误] 本地数据库完整性检查失败: {err}")
-        print("[备份错误] 跳过备份以避免覆盖飞书的完好备份")
-        print("[备份错误] 本地数据库将保留，请检查数据库状态")
+        print(f"[备份错误] 本地数据库完整性检查失败: {err}", file=sys.stderr)
+        print("[备份错误] 跳过备份以避免覆盖飞书的完好备份", file=sys.stderr)
+        print("[备份错误] 本地数据库将保留，请检查数据库状态", file=sys.stderr)
         return False
 
     # 自动重试最多5次，确保上传成功
@@ -356,33 +356,33 @@ def backup_database():
             else:
                 last_error = output[-300:] if output else "未知错误"
                 if attempt < 4:  # 前4次失败都重试，第5次失败后退出
-                    print(f"  [备份] 第 {attempt+1} 次尝试失败，2秒后重试...")
+                    print(f"  [备份] 第 {attempt+1} 次尝试失败，2秒后重试...", file=sys.stderr)
                     time.sleep(2)
                     continue
         except subprocess.TimeoutExpired:
             last_error = "备份超时（90秒）"
             if attempt < 4:
-                print(f"  [备份] 第 {attempt+1} 次尝试超时，2秒后重试...")
+                print(f"  [备份] 第 {attempt+1} 次尝试超时，2秒后重试...", file=sys.stderr)
                 time.sleep(2)
                 continue
         except Exception as e:
             last_error = str(e)
             if attempt < 4:
-                print(f"  [备份] 第 {attempt+1} 次尝试异常，2秒后重试...")
+                print(f"  [备份] 第 {attempt+1} 次尝试异常，2秒后重试...", file=sys.stderr)
                 time.sleep(2)
                 continue
         break
 
     # 所有重试都失败
-    print()
-    print("=" * 60)
-    print("[备份错误] 数据库备份到飞书失败（已重试5次）")
-    print(f"  详情: {last_error[:300]}")
-    print()
-    print("  本地数据库将保留，不会被删除。")
-    print("  建议: 稍后手动运行以下命令进行备份:")
-    print(f"    python3 {backup_script}")
-    print("=" * 60)
+    print(file=sys.stderr)
+    print("=" * 60, file=sys.stderr)
+    print("[备份错误] 数据库备份到飞书失败（已重试5次）", file=sys.stderr)
+    print(f"  详情: {last_error[:300]}", file=sys.stderr)
+    print(file=sys.stderr)
+    print("  本地数据库将保留，不会被删除。", file=sys.stderr)
+    print("  建议: 稍后手动运行以下命令进行备份:", file=sys.stderr)
+    print(f"    python3 {backup_script}", file=sys.stderr)
+    print("=" * 60, file=sys.stderr)
     return False
 
 
@@ -406,7 +406,7 @@ def _init_db_tables(conn):
     cols = [row[1] for row in conn.execute("PRAGMA table_info(events)").fetchall()]
     if "extras" not in cols:
         conn.execute("ALTER TABLE events ADD COLUMN extras TEXT NOT NULL DEFAULT ''")
-        print("[数据库迁移] events 表已添加 extras 字段")
+        print("[数据库迁移] events 表已添加 extras 字段", file=sys.stderr)
 
     # 迁移：旧 categories 表没有 id/parent_id 字段时重建
     # 先检查表是否存在（首次使用时 categories 表可能尚未创建）
@@ -416,7 +416,7 @@ def _init_db_tables(conn):
     if cat_exists:
         cols = [row[1] for row in conn.execute("PRAGMA table_info(categories)").fetchall()]
         if "id" not in cols or "parent_id" not in cols:
-            print("[数据库迁移] 重建 categories 表以支持多级分类...")
+            print("[数据库迁移] 重建 categories 表以支持多级分类...", file=sys.stderr)
             # 备份旧数据
             old_cats = conn.execute("SELECT name, keywords, description, created_at FROM categories").fetchall()
             conn.execute("DROP TABLE categories")
@@ -436,7 +436,7 @@ def _init_db_tables(conn):
                     "INSERT INTO categories (name, parent_id, keywords, description, created_at) VALUES (?, NULL, ?, ?, ?)",
                     (cat["name"], cat["keywords"], cat["description"], cat["created_at"])
                 )
-            print(f"[数据库迁移] 已迁移 {len(old_cats)} 个分类")
+            print(f"[数据库迁移] 已迁移 {len(old_cats)} 个分类", file=sys.stderr)
 
     conn.executescript("""
 
@@ -513,15 +513,14 @@ def ensure_current_event(conn):
     latest = conn.execute("SELECT end_time FROM events ORDER BY end_time DESC LIMIT 1").fetchone()
     if latest:
         start_time = latest[0]
-        print(f"[时间连续性] 检测到无进行中事件，已从最新事件结束时间({parse_iso(start_time).strftime('%m-%d %H:%M')})自动开始'未记录'事件")
+        print(f"[时间连续性] 检测到无进行中事件，已从最新事件结束时间({parse_iso(start_time).strftime('%m-%d %H:%M')})自动开始'未记录'事件", file=sys.stderr)
     else:
         start_time = now_iso()
-        print("[时间连续性] 首次使用，已自动开始'未记录'事件")
+        print("[时间连续性] 首次使用，已自动开始'未记录'事件", file=sys.stderr)
 
     conn.execute(
         "INSERT OR REPLACE INTO current (id, name, start_time) VALUES (1, '未记录', ?)",
         (start_time,)
     )
-
 
 
