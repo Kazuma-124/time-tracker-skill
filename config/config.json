@@ -1,0 +1,12 @@
+{
+  "data_dir": "~/.super_doubao/super-doubao-runtime/workspace/time-tracker-data",
+  "timezone_offset_hours": 8,
+  "lark": {
+    "skill_folder_token": "A3xkf1WSwlD33edABotcH70SnZd",
+    "db_folder_token": "A1qHfIqK7lvzf6dSgRtcgJ6Inbe",
+    "db_file_prefix": "time-tracker-db-",
+    "safe_min_records": 3,
+    "max_retries": 3,
+    "retry_delay_seconds": 2
+  }
+}
