@@ -1,6 +1,6 @@
 ---
 name: time-tracker
-version: 3.20.0
+version: 3.21.0
 description: 柳比歇夫时间统计法追踪工具。在云电脑工作模式对话中，通过时间节点法记录事件起止时间，自动计算时长，并提供日/周/月/季度/年度统计、事件平均时长查询、事件名称与分类管理、季度分类评审。当用户声明本对话用于时间统计、输入事件名称表示切换任务、要求统计时间花费、查询做某事通常多久、管理事件名称或分类、季度评审时使用。数据持久化在 SQLite 数据库，对话仅作为输入接口。
 ---
 
@@ -374,18 +374,30 @@ python3 <script> quarterly-review
 
 ### 核心原则
 **混合存储架构**：
-- **技能代码**（SKILL.md、脚本、config）存储在 GitHub 私有仓库 `Kazuma-124/time-tracker-skill`，通过 git 进行版本控制
+- **技能代码**（SKILL.md、脚本、config）存储在 GitHub 私有仓库 `Kazuma-124/time-tracker-skill`，通过 GitHub MCP 连接器进行版本控制和同步
 - **数据库文件**（SQLite）存储在飞书云空间，作为唯一的权威数据源
 - 本地数据库只是临时工作区，操作完成后立即删除
 
 ### 技能代码同步
-技能代码通过 time-tracker-launcher 从 GitHub 拉取：
-```bash
-python3 <launcher_dir>/scripts/pull_from_github.py
-```
-- 认证方式：环境变量 `GITHUB_TOKEN`（fine-grained PAT，需 Contents Read 权限）
+技能代码通过 time-tracker-launcher 从 GitHub 拉取，**统一使用 GitHub MCP 连接器**，禁止使用 git 命令行或其他方式：
+- 调用 `mcp__github__get_file_contents` 逐个拉取仓库文件到本地
 - 对比 VERSION 文件，版本一致时跳过
-- 修改技能后需手动 commit + push 到 GitHub
+- 详细流程见 time-tracker-launcher/SKILL.md
+- 修改技能后通过 `mcp__github__create_or_update_file` 上传到 GitHub
+
+### 核心原则：失败即报错停止
+
+**任何环节失败时，直接报错并停止当前操作，绝不降级继续或使用可能过时/损坏的数据。**
+
+| 失败场景 | 处理方式 |
+|---------|---------|
+| 配置文件加载失败 | 报错停止，不使用默认值兜底 |
+| 从飞书拉取数据库失败 | 报错停止，不使用本地旧数据 |
+| 本地数据库完整性检查失败 | 尝试从飞书恢复，恢复失败则报错停止 |
+| 获取数据库锁失败 | 报错停止，不并发写入 |
+| 备份到飞书失败 | 保留本地数据库，报错提示手动备份 |
+| 本地记录数过少且飞书有备份 | 拒绝上传并报错，防止空数据覆盖 |
+| 上传后验证失败 | 删除刚上传的损坏文件，重试，最终失败则报错 |
 
 ### 数据库同步（每次操作的完整流程）
 
@@ -396,7 +408,7 @@ python3 <launcher_dir>/scripts/pull_from_github.py
    - 调用 backup_to_lark.py --restore
    - 下载飞书上最新的数据库备份
    - 覆盖本地临时数据库
-   - 拉取失败时：若本地有旧数据库则恢复本地，否则报错
+   - 拉取失败时：直接报错停止，不使用本地旧数据（防止操作过时数据）
     ↓
 2. 在本地执行操作（查询或修改）
    - 只读操作：直接查询本地数据库
@@ -426,7 +438,7 @@ python3 <launcher_dir>/scripts/pull_from_github.py
 ### 注意事项
 - 测试模式（`--test`）下不会删除测试数据库，也不会上传到飞书
 - `init-test-db` 命令不会删除本地数据库（它的目的就是创建测试数据库）
-- 拉取或上传失败时会输出明确警告，不会静默失败
+- 拉取或上传失败时直接报错停止，不会静默失败或降级继续
 
 ## 事件记录字段
 
@@ -458,15 +470,14 @@ python3 <launcher_dir>/scripts/pull_from_github.py
 - **次版本号**：向下兼容的功能性新增
 - **修订号**：向下兼容的问题修正
 
-**每次修改技能后，必须更新 VERSION 文件中的版本号，然后 push 到 GitHub**：
-```bash
-# 1. 修改技能文件
-# 2. 更新 VERSION 文件中的版本号
-# 3. commit + push 到 GitHub
-git add -A
-git commit -m "描述修改内容"
-git push origin main
-```
+**每次修改技能后，必须更新 VERSION 文件中的版本号，然后通过 GitHub MCP 连接器上传**：
+
+1. 修改技能文件
+2. 更新 VERSION 文件中的版本号
+3. 对每个修改的文件，调用 `mcp__github__get_file_contents` 获取当前 SHA
+4. 调用 `mcp__github__create_or_update_file` 上传新内容（含 SHA 和 commit message）
+
+**禁止使用 git commit + push**，统一通过 MCP 连接器上传。
 
 技能代码仓库：`Kazuma-124/time-tracker-skill`（私有，分支 main）
 
@@ -477,7 +488,7 @@ git push origin main
 **本地数据库不存在时**：
 1. 尝试从飞书云空间恢复最新数据库
 2. 恢复成功 → 使用恢复的数据库
-3. 飞书无备份（首次使用）→ 创建空数据库（含表结构和"未记录"特殊分类），立即上传到飞书
+3. 恢复失败且无本地数据库 → 直接报错，绝不创建空数据库（防止空数据覆盖飞书备份）
 
 ### 进行中事件的备份与恢复
 
@@ -545,9 +556,9 @@ python3 <script_dir>/backup_to_lark.py --cleanup
 
 **安全检查（防止数据丢失）**：
 - 备份前检查本地数据库的事件记录数
-- 如果本地记录数为 **0** 且飞书已有备份 → **跳过备份**，警告用户可能需要恢复
-- 如果本地记录数少于 **3** 条且飞书已有备份 → **跳过备份**，警告用户
-- 使用 `--force` 参数可强制跳过安全检查
+- 如果本地记录数为 **0** 且飞书已有备份 → **拒绝上传并报错**，防止空数据库覆盖飞书数据
+- 如果本地记录数少于 **3** 条且飞书已有备份 → **拒绝上传并报错**，防止数据异常
+- 使用 `--force` 参数可强制跳过安全检查（不推荐）
 
 ### 数据恢复
 
@@ -580,7 +591,7 @@ python3 <skill_dir>/scripts/backup_to_lark.py --restore
 若同一天有多项统计，按优先级执行：日 > 周 > 月 > 季度 > 年。
 
 定时任务触发后，模型应：
-1. 从 GitHub 拉取最新技能代码（通过 pull_from_github.py 或 MCP 工具）
+1. 从 GitHub 拉取最新技能代码（通过 GitHub MCP 连接器）
 2. 从飞书恢复最新数据库
 3. 执行统计
 4. 运行 name-check 进行名称与分类管理
