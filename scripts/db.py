@@ -8,6 +8,7 @@ import os
 import shutil
 import sqlite3
 import subprocess
+import sys
 import time
 from contextlib import contextmanager
 from datetime import datetime
@@ -521,5 +522,6 @@ def ensure_current_event(conn):
         "INSERT OR REPLACE INTO current (id, name, start_time) VALUES (1, '未记录', ?)",
         (start_time,)
     )
+
 
 
