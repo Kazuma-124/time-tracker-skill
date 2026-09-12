@@ -1,6 +1,6 @@
 ---
 name: time-tracker
-version: 3.21.0
+version: 3.22.0
 description: 柳比歇夫时间统计法追踪工具。在云电脑工作模式对话中，通过时间节点法记录事件起止时间，自动计算时长，并提供日/周/月/季度/年度统计、事件平均时长查询、事件名称与分类管理、季度分类评审。当用户声明本对话用于时间统计、输入事件名称表示切换任务、要求统计时间花费、查询做某事通常多久、管理事件名称或分类、季度评审时使用。数据持久化在 SQLite 数据库，对话仅作为输入接口。
 ---
 
@@ -380,10 +380,19 @@ python3 <script> quarterly-review
 
 ### 技能代码同步
 技能代码通过 time-tracker-launcher 从 GitHub 拉取，**统一使用 GitHub MCP 连接器**，禁止使用 git 命令行或其他方式：
-- 调用 `mcp__github__get_file_contents` 逐个拉取仓库文件到本地
+
+**拉取（仓库级同步）**：
+- 调用 `mcp__github__get_file_contents` 递归列出远程所有文件
+- 对比本地与远程文件列表，增删改全部同步
+- 本地多余文件必须删除，确保本地与远程完全一致
 - 对比 VERSION 文件，版本一致时跳过
 - 详细流程见 time-tracker-launcher/SKILL.md
-- 修改技能后通过 `mcp__github__create_or_update_file` 上传到 GitHub
+
+**上传（仓库级同步）**：
+- 对比本地与远程文件列表
+- 新增/修改的文件用 `mcp__github__push_files` 批量上传（单个 commit）
+- 远程多余文件用 `mcp__github__delete_file` 删除
+- 详细流程见 time-tracker-launcher/SKILL.md
 
 ### 核心原则：失败即报错停止
 
@@ -470,14 +479,18 @@ python3 <script> quarterly-review
 - **次版本号**：向下兼容的功能性新增
 - **修订号**：向下兼容的问题修正
 
-**每次修改技能后，必须更新 VERSION 文件中的版本号，然后通过 GitHub MCP 连接器上传**：
+**每次修改技能后，必须更新 VERSION 文件中的版本号，然后通过 GitHub MCP 连接器进行仓库级同步上传**：
 
 1. 修改技能文件
 2. 更新 VERSION 文件中的版本号
-3. 对每个修改的文件，调用 `mcp__github__get_file_contents` 获取当前 SHA
-4. 调用 `mcp__github__create_or_update_file` 上传新内容（含 SHA 和 commit message）
+3. 调用 `mcp__github__get_file_contents` 递归列出远程所有文件
+4. 对比本地与远程文件列表，得出新增/修改/删除三组
+5. 新增+修改的文件用 `mcp__github__push_files` 批量上传（单个 commit）
+6. 删除的文件用 `mcp__github__delete_file` 逐个删除
+7. 再次列出远程文件，验证与本地完全一致
 
 **禁止使用 git commit + push**，统一通过 MCP 连接器上传。
+**禁止只上传修改的文件而忽略删除**，必须确保增删改全部同步。
 
 技能代码仓库：`Kazuma-124/time-tracker-skill`（私有，分支 main）
 
