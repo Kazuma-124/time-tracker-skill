@@ -2,8 +2,25 @@
   "name": "晚间时间统计报告",
   "description": "柳比歇夫时间统计法 - 每日晚间统计报告生成任务",
   "created_at": "2026-09-02",
-  "updated_at": "2026-09-03",
-  "workflow": "执行时间统计报告生成流程：恢复技能和数据库 → 判断统计周期 → 执行统计 → 名称与分类管理分析 → 整理报告",
+  "updated_at": "2026-09-13",
+  "workflow": "执行时间统计报告生成流程：从GitHub拉取技能代码 → 从飞书恢复数据库 → 判断统计周期 → 执行统计 → 名称与分类管理分析 → 整理报告",
+  "skill_sync": {
+    "description": "技能代码存储在GitHub私有仓库，通过MCP连接器进行仓库级同步（增删改全部同步）",
+    "repo": "Kazuma-124/time-tracker-skill",
+    "branch": "main",
+    "local_dir": "/home/user/.super_doubao/super-doubao-runtime/workspace/.user_skills/time-tracker/",
+    "method": "GitHub MCP 连接器（禁止使用git命令行或其他方式）",
+    "pull_flow": [
+      "调用 mcp__github__get_file_contents 获取远程 VERSION，与本地对比",
+      "版本一致且本地关键文件（SKILL.md、VERSION、scripts/time_tracker.py）存在且非空 → 跳过拉取",
+      "版本不一致 → 递归列出远程所有文件（根目录、config/、scripts/）",
+      "对比本地与远程文件列表（仅对比路径）",
+      "全量拉取并覆盖写入所有远程文件到本地对应路径",
+      "删除本地多余文件（含 __pycache__）",
+      "验证本地文件列表与远程完全一致"
+    ],
+    "required_files_note": "文件列表以远程仓库实际为准，不得硬编码。当前包含：SKILL.md、VERSION、config/config.json、config/stats-task.json、scripts/下所有.py文件"
+  },
   "three_layer_mapping": {
     "description": "三层映射机制，所有映射关系由模型决定，脚本不自动创建",
     "layer1": "原始名 → 标准名（aliases 表）：用户输入的原始名称映射到精确描述事件的标准名",
@@ -12,16 +29,26 @@
   },
   "steps": [
     {
-      "id": "restore_skill",
-      "name": "恢复最新技能",
-      "command": "python3 /home/user/.super_doubao/super-doubao-runtime/workspace/.user_skills/time-tracker/scripts/backup_to_lark.py --restore-skill",
-      "description": "从飞书云空间恢复最新版本的 time-tracker 技能（包含 SKILL.md、脚本、config/stats-task.json）。恢复后必须重新读取 SKILL.md 确认最新命令用法。"
+      "id": "pull_skill",
+      "name": "从GitHub拉取最新技能代码",
+      "method": "GitHub MCP 连接器（仓库级同步）",
+      "description": "技能代码已迁移到GitHub私有仓库 Kazuma-124/time-tracker-skill（分支main），不再从飞书恢复技能。通过MCP连接器进行仓库级同步：递归列出远程文件→全量覆盖写入→删除本地多余文件→验证完全一致。禁止使用git命令行或其他方式。拉取后必须重新读取SKILL.md确认最新命令用法。",
+      "forbidden": "禁止使用 pull_from_github.py（已删除）、git clone、curl、wget 等其他方式"
     },
     {
       "id": "restore_db",
-      "name": "恢复最新数据库",
+      "name": "从飞书恢复最新数据库",
       "command": "python3 /home/user/.super_doubao/super-doubao-runtime/workspace/.user_skills/time-tracker/scripts/backup_to_lark.py --restore",
-      "description": "从飞书云空间恢复最新的时间统计数据库"
+      "description": "数据库仍存储在飞书云空间，每次统计前必须恢复最新数据库。恢复失败时直接报错停止，不使用本地旧数据。"
+    },
+    {
+      "id": "read_docs",
+      "name": "读取技能文档和统计任务配置",
+      "commands": [
+        "Read /home/user/.super_doubao/super-doubao-runtime/workspace/.user_skills/time-tracker/SKILL.md",
+        "Read /home/user/.super_doubao/super-doubao-runtime/workspace/.user_skills/time-tracker/config/stats-task.json"
+      ],
+      "description": "拉取技能后必须重新读取SKILL.md确认最新命令用法，同时读取本配置文件确认执行流程。"
     },
     {
       "id": "determine_periods",
@@ -101,7 +128,8 @@
         "命名唯一性：标准名之间不能相同，分类名之间不能相同",
         "命名可重复性：标准名与分类名之间可以相同，原始名与标准名之间可以相同（本质不是同一类对象）",
         "分类是树形结构，不能出现环路",
-        "所有标准名、分类名、映射关系由模型决定，脚本不自动创建"
+        "所有标准名、分类名、映射关系由模型决定，脚本不自动创建",
+        "标准名应描述具体事件而非一类事件（如「看冬瓜强直播」而非「看直播」）"
       ]
     },
     {
@@ -121,14 +149,16 @@
   ],
   "notes": [
     "这是定时任务自动执行，不需要用户交互",
-    "恢复技能、数据库、统计任务配置是必须步骤",
-    "恢复技能后必须重新读取 SKILL.md 确认最新命令用法",
+    "技能代码从GitHub MCP拉取（仓库级同步），数据库从飞书恢复",
+    "禁止使用已删除的 pull_from_github.py，禁止使用git命令行",
+    "拉取技能后必须重新读取 SKILL.md 确认最新命令用法",
     "使用 stats-json 获取结构化数据，便于整理报告",
     "名称与分类管理方案只输出建议，不自动执行",
     "季度分类评审方案只输出建议，不自动执行",
     "统计日期注意跨零点问题（23:59触发，若已过午夜则统计前一天）",
     "若同一天有多项统计，按优先级日 > 周 > 月 > 季度 > 年依次执行",
-    "三层映射机制：原始名→标准名→分类名→父分类，所有映射由模型决定"
-  ],
-  "note": "本配置文件是 time-tracker 技能的一部分，随技能一起版本管理和备份恢复，无单独版本号。"
+    "三层映射机制：原始名→标准名→分类名→父分类，所有映射由模型决定",
+    "失败即报错停止：任何环节失败时直接报错，不降级继续或使用可能过时/损坏的数据",
+    "本配置文件是 time-tracker 技能的一部分，随技能一起从GitHub拉取，无单独版本号"
+  ]
 }
