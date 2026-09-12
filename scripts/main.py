@@ -172,8 +172,8 @@ def main():
     if args.test:
         config.TEST_MODE = True
         config.DB_PATH = config.TEST_DB_PATH
-        print("[测试模式] 已切换到测试数据库，不会影响生产数据，不会备份到飞书")
-        print()
+        print("[测试模式] 已切换到测试数据库，不会影响生产数据，不会备份到飞书", file=sys.stderr)
+        print(file=sys.stderr)
     if not args.command:
         parser.print_help()
         return
@@ -194,19 +194,19 @@ def main():
     try:
         commands[args.command](args)
     except sqlite3.DatabaseError as e:
-        print()
-        print("=" * 50)
-        print(f"❌ 数据库错误: {e}")
-        print("=" * 50)
-        print("建议:")
-        print("  1. 运行 backup_to_lark.py --restore 从飞书恢复数据库")
-        print("  2. 如果恢复失败，检查飞书云空间中的备份文件")
+        print(file=sys.stderr)
+        print("=" * 50, file=sys.stderr)
+        print(f"❌ 数据库错误: {e}", file=sys.stderr)
+        print("=" * 50, file=sys.stderr)
+        print("建议:", file=sys.stderr)
+        print("  1. 运行 backup_to_lark.py --restore 从飞书恢复数据库", file=sys.stderr)
+        print("  2. 如果恢复失败，检查飞书云空间中的备份文件", file=sys.stderr)
         sys.exit(1)
     except Exception as e:
-        print()
-        print("=" * 50)
-        print(f"❌ 未预期的错误: {type(e).__name__}: {e}")
-        print("=" * 50)
+        print(file=sys.stderr)
+        print("=" * 50, file=sys.stderr)
+        print(f"❌ 未预期的错误: {type(e).__name__}: {e}", file=sys.stderr)
+        print("=" * 50, file=sys.stderr)
         import traceback
         traceback.print_exc()
         sys.exit(1)
@@ -218,12 +218,12 @@ def main():
             if config.LAST_BACKUP_SUCCESS:
                 cleanup_local_db()
             else:
-                print()
-                print("=" * 60)
-                print("[数据安全] 由于备份失败，本地数据库已保留")
-                print(f"  数据库路径: {config.DB_PATH}")
-                print("  请解决备份问题后手动运行 backup_to_lark.py 进行备份")
-                print("=" * 60)
+                print(file=sys.stderr)
+                print("=" * 60, file=sys.stderr)
+                print("[数据安全] 由于备份失败，本地数据库已保留", file=sys.stderr)
+                print(f"  数据库路径: {config.DB_PATH}", file=sys.stderr)
+                print("  请解决备份问题后手动运行 backup_to_lark.py 进行备份", file=sys.stderr)
+                print("=" * 60, file=sys.stderr)
 
 
 if __name__ == "__main__":
