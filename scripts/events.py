@@ -8,7 +8,7 @@ from datetime import datetime
 
 from config import TZ
 from db import init_db, get_db, db_transaction
-from models import resolve_event_category, build_event_category_map, now_iso, parse_iso, format_duration
+from models import build_event_category_map, resolve_event_category, now_iso, parse_iso, format_duration
 
 # ============ 事件记录 ============
 def cmd_start(args):
