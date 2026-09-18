@@ -452,18 +452,7 @@ def cmd_name_stats(args):
 
     print()
     print("-" * 70)
-    print()
-    print("【语义分析指引】")
-    print("  1. 同义词归并：如'编码'、'写代码'、'敲代码'应归为同一标准名")
-    print("  2. 子任务归并：如'写代码-登录模块'应归入'写代码'")
-    print("  3. 分类推荐：主要分类为'其他'且次数多/时长长的事件，建议创建或归入分类")
-    print("  4. 标有'←原始名'的名称已有映射，无需重复处理")
-    print()
-    print("【执行命令】")
-    print("  添加原始名映射: python3 time_tracker.py add-alias '<变体名>' '<标准名>'")
-    print("  添加分类: python3 time_tracker.py add-category '<分类名>' --parent '<父分类>'")
-    print("  查看原始名映射: python3 time_tracker.py aliases")
-    print("  查看分类: python3 time_tracker.py categories")
+
 
 
 # ============ 季度分类评审 ============
@@ -510,16 +499,7 @@ def cmd_quarterly_review(args):
     quarter_names = list(set(e["name"] for e in events))
     print(f"本季度共 {len(quarter_names)} 种事件名称。")
     print()
-    print("命名一致性检查由模型完成：")
-    print("  1. 运行 name-check 获取名称数据和分析指引")
-    print("  2. 模型从语义角度分析哪些名称描述的是同一事件")
-    print("  3. 输出结构化 JSON 方案，用户确认后用 add-alias 执行")
-    print()
-    print("  相关命令:")
-    print("    名称检查: python3 time_tracker.py name-check")
-    print("    名称统计: python3 time_tracker.py name-stats")
-    print("    添加原始名映射: python3 time_tracker.py add-alias '<变体>' '<标准名>'")
-    print()
+
 
     # 第二步：分类调整候选方案
     print("━" * 50)
@@ -634,27 +614,12 @@ def cmd_quarterly_review(args):
         print()
         print("请审查以上方案，决定保留/弃用/调整。")
         print()
-        print("执行命令参考:")
-        print("  新建分类: python3 time_tracker.py add-category '<分类名>' --parent '<父分类>' --description '<说明>'")
-        print("  删除分类: python3 time_tracker.py remove-category '<分类名>'")
-        print("  添加原始名映射: python3 time_tracker.py add-alias '<原始名>' '<标准名>'")
-        print()
-        print("提示: 你可以修改方案中的分类名，或组合多个方案。")
-        print("      调整阈值重新生成: python3 time_tracker.py quarterly-review --new-pct 2 --new-min 90")
+        print("提示: 可调整阈值重新生成: python3 time_tracker.py quarterly-review --new-pct 2 --new-min 90")
     else:
         print("当前分类结构合理，暂无调整候选方案。")
         print("如需更敏感的检测，可降低阈值: --new-pct 1 --merge-pct 3 --split-pct 40")
     print()
-    print("━" * 50)
-    print("  语义分析（可选）")
-    print("━" * 50)
-    print()
-    print("以上为基于规则的分类建议。如需更深层的语义分析（如识别'编码'与'写代码'")
-    print("是同一类事件），可运行以下命令获取完整事件名称统计，由模型做语义聚类分析：")
-    print()
-    print("  python3 time_tracker.py name-stats")
-    print()
-    print("模型分析后可批量执行 add-alias / add-category 完成映射。")
+
 
 
 # ============ 数据导出 ============
@@ -744,5 +709,4 @@ def cmd_export_stats(args):
     print(f"格式: {fmt.upper()}, 周期: {period_label(period)}")
     if not data["has_data"]:
         print("(注意: 该周期无记录数据)")
-
 

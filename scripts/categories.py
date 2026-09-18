@@ -313,40 +313,8 @@ def cmd_name_check(args):
         print("  (所有标准名都已分类)")
     print()
 
-    print(f"--- 所有标准名 ({len(std_names)} 个) ---")
-    for s in std_names:
-        print(f"  {s['name']:<25} → {s['category_name']}")
+    print(f"--- 配置概览 ---")
+    print(f"  标准名: {len(std_names)} 个（用 standard-names 查看完整列表）")
+    print(f"  分类: {len(categories)} 个（用 categories 查看完整列表）")
     print()
 
-    print(f"--- 所有分类 ({len(categories)} 个) ---")
-    for c in categories:
-        parent = ""
-        if c["parent_id"]:
-            parent_cat = next((p["name"] for p in categories if p["id"] == c["parent_id"]), "")
-            parent = f" (父: {parent_cat})"
-        print(f"  {c['name']}{parent}")
-    print()
-
-    print("=" * 70)
-    print("  模型分析指引")
-    print("=" * 70)
-    print()
-    print("  请从语义角度分析以上数据，输出结构化 JSON 方案:")
-    print('  {')
-    print('    "new_standard_names": [{"name": "...", "category": "...", "reason": "..."}],')
-    print('    "new_categories": [{"name": "...", "parent": null, "reason": "..."}],')
-    print('    "new_mappings": [{"raw_name": "...", "standard_name": "...", "reason": "..."}],')
-    print('    "category_changes": [{"standard_name": "...", "new_category": "...", "reason": "..."}],')
-    print('    "mapping_changes": [{"raw_name": "...", "old_standard": "...", "new_standard": "...", "reason": "..."}],')
-    print('    "removals": [{"type": "mapping|standard_name|category", "name": "...", "reason": "..."}]')
-    print('  }')
-    print()
-    print("  分析维度:")
-    print("  1. 未映射的原始名 → 应映射到哪个标准名，或需要创建新标准名")
-    print("  2. 未分类的标准名 → 应归到哪个分类，或需要创建新分类")
-    print("  3. 相似名称 → 是否描述同一事件，若是则建立映射")
-    print("  4. 标准名准确性 → 是否需要改名或拆分")
-    print("  5. 分类合理性 → 是否需要调整、合并、拆分或改名")
-    print()
-    print("  注意: 方案只输出建议，不自动执行。用户确认后用对应命令执行。")
-    print("=" * 70)

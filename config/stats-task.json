@@ -2,58 +2,45 @@
   "name": "晚间时间统计报告",
   "description": "柳比歇夫时间统计法 - 每日晚间统计报告生成任务",
   "created_at": "2026-09-02",
-  "updated_at": "2026-09-13",
-  "workflow": "执行时间统计报告生成流程：从GitHub拉取技能代码 → 从飞书恢复数据库 → 判断统计周期 → 执行统计 → 名称与分类管理分析 → 整理报告",
+  "updated_at": "2026-09-18",
+  "workflow": "从GitHub拉取技能代码 → 从飞书恢复数据库 → 判断统计周期 → 执行统计 → 名称与分类管理分析 → 整理报告",
   "skill_sync": {
-    "description": "技能代码存储在GitHub私有仓库，通过MCP连接器进行仓库级同步（增删改全部同步）",
     "repo": "Kazuma-124/time-tracker-skill",
     "branch": "main",
     "local_dir": "/home/user/.super_doubao/super-doubao-runtime/workspace/.user_skills/time-tracker/",
-    "method": "GitHub MCP 连接器（禁止使用git命令行或其他方式）",
+    "method": "GitHub MCP 连接器（禁止使用git命令行）",
     "pull_flow": [
       "调用 mcp__github__get_file_contents 获取远程 VERSION，与本地对比",
-      "版本一致且本地关键文件（SKILL.md、VERSION、scripts/time_tracker.py）存在且非空 → 跳过拉取",
-      "版本不一致 → 递归列出远程所有文件（根目录、config/、scripts/）",
-      "对比本地与远程文件列表（仅对比路径）",
-      "全量拉取并覆盖写入所有远程文件到本地对应路径",
-      "删除本地多余文件（含 __pycache__）",
-      "验证本地文件列表与远程完全一致"
-    ],
-    "required_files_note": "文件列表以远程仓库实际为准，不得硬编码。当前包含：SKILL.md、VERSION、config/config.json、config/stats-task.json、scripts/下所有.py文件"
-  },
-  "three_layer_mapping": {
-    "description": "三层映射机制，所有映射关系由模型决定，脚本不自动创建",
-    "layer1": "原始名 → 标准名（aliases 表）：用户输入的原始名称映射到精确描述事件的标准名",
-    "layer2": "标准名 → 分类名（standard_names.category_id）：每个标准名归到一个分类",
-    "layer3": "分类名 → 分类名（categories.parent_id）：分类的多级树形结构，禁止环路"
+      "版本一致且关键文件存在 → 跳过拉取",
+      "版本不一致 → 递归列出远程所有文件，全量覆盖写入，删除本地多余文件"
+    ]
   },
   "steps": [
     {
       "id": "pull_skill",
       "name": "从GitHub拉取最新技能代码",
       "method": "GitHub MCP 连接器（仓库级同步）",
-      "description": "技能代码已迁移到GitHub私有仓库 Kazuma-124/time-tracker-skill（分支main），不再从飞书恢复技能。通过MCP连接器进行仓库级同步：递归列出远程文件→全量覆盖写入→删除本地多余文件→验证完全一致。禁止使用git命令行或其他方式。拉取后必须重新读取SKILL.md确认最新命令用法。",
-      "forbidden": "禁止使用 pull_from_github.py（已删除）、git clone、curl、wget 等其他方式"
+      "description": "按 skill_sync.pull_flow 执行。拉取后重新读取 SKILL.md 确认最新命令用法。",
+      "forbidden": "禁止使用 pull_from_github.py（已删除）、git clone、curl、wget"
     },
     {
       "id": "restore_db",
       "name": "从飞书恢复最新数据库",
       "command": "python3 /home/user/.super_doubao/super-doubao-runtime/workspace/.user_skills/time-tracker/scripts/backup_to_lark.py --restore",
-      "description": "数据库仍存储在飞书云空间，每次统计前必须恢复最新数据库。恢复失败时直接报错停止，不使用本地旧数据。"
+      "description": "恢复失败时直接报错停止。"
     },
     {
       "id": "read_docs",
-      "name": "读取技能文档和统计任务配置",
+      "name": "读取技能文档",
       "commands": [
-        "Read /home/user/.super_doubao/super-doubao-runtime/workspace/.user_skills/time-tracker/SKILL.md",
-        "Read /home/user/.super_doubao/super-doubao-runtime/workspace/.user_skills/time-tracker/config/stats-task.json"
+        "Read /home/user/.super_doubao/super-doubao-runtime/workspace/.user_skills/time-tracker/SKILL.md"
       ],
-      "description": "拉取技能后必须重新读取SKILL.md确认最新命令用法，同时读取本配置文件确认执行流程。"
+      "description": "拉取技能后读取 SKILL.md 确认最新命令用法。"
     },
     {
       "id": "determine_periods",
       "name": "判断统计周期和统计日期",
-      "logic": "先确定统计日期：若当前时间在 00:00-00:30 之间（定时任务跨零点执行），统计日期为前一天（即刚结束的那一天）；否则统计日期为当天。\n\n然后根据统计日期判断需要执行哪些统计：\n- 每天执行日统计\n- 统计日期是一周最后一天（周日）时执行周统计\n- 统计日期是当月最后一天时执行月统计\n- 统计日期是当季最后一天时执行季度统计+季度分类评审\n- 统计日期是当年最后一天时执行年统计\n\n若同一天有多项统计，按顺序执行：日 → 周 → 月 → 季度 → 年。所有周期的统计命令都使用统计日期作为参考日期传入。",
+      "logic": "若当前时间在 00:00-00:30 之间，统计日期为前一天；否则为当天。\n\n根据统计日期判断执行哪些统计：\n- 每天执行日统计\n- 周日执行周统计\n- 当月最后一天执行月统计\n- 当季最后一天执行季度统计+季度评审\n- 当年最后一天执行年统计\n\n同一天多项统计按顺序执行：日 → 周 → 月 → 季度 → 年。所有周期使用统计日期作为参考日期。",
       "commands": {
         "day": "python3 /home/user/.super_doubao/super-doubao-runtime/workspace/.user_skills/time-tracker/scripts/time_tracker.py stats-json day [日期]",
         "week": "python3 /home/user/.super_doubao/super-doubao-runtime/workspace/.user_skills/time-tracker/scripts/time_tracker.py stats-json week [日期]",
@@ -66,100 +53,38 @@
     {
       "id": "execute_stats",
       "name": "执行统计",
-      "description": "对每个需要执行的周期运行 stats-json 命令获取结构化数据。使用 stats-json 而非 stats，便于后续整理报告。统计日期按 determine_periods 中的判断结果传入。统计时通过三层映射实时解析分类，不依赖 events 表中的冗余字段。"
+      "description": "对每个需要执行的周期运行 stats-json 获取结构化数据。"
     },
     {
       "id": "quarterly_review",
       "name": "季度分类评审（仅季度统计时执行）",
       "command": "python3 /home/user/.super_doubao/super-doubao-runtime/workspace/.user_skills/time-tracker/scripts/time_tracker.py quarterly-review",
-      "description": "季度统计后执行分类评审，输出分类调整候选方案（新建/合并/拆分/改名/层级调整）。方案只输出建议，不自动执行，由用户后续确认。"
+      "description": "输出分类调整候选方案，只输出建议不自动执行。"
     },
     {
       "id": "name_category_management",
       "name": "名称与分类管理分析",
       "command_template": "python3 /home/user/.super_doubao/super-doubao-runtime/workspace/.user_skills/time-tracker/scripts/time_tracker.py name-check --period {period} [日期]",
-      "description": "每个周期统计后执行名称与分类管理分析。模型基于输出数据，从语义角度分析三层映射的合理性，输出结构化JSON方案。方案只输出建议，不自动执行。",
-      "analysis_scope": {
-        "layer1_raw_to_standard": "原始名→标准名映射：哪些原始名未映射、哪些映射不合理、哪些名称描述同一事件应合并",
-        "layer2_standard_to_category": "标准名→分类名映射：哪些标准名未分类、哪些分类不合理、标准名是否需要调整分类",
-        "layer3_category_hierarchy": "分类树形结构：分类是否需要新建/合并/拆分/改名/调整父分类、是否存在环路风险"
-      },
-      "output_format": {
-        "raw_name_mappings": [
-          {
-            "raw_name": "原始名",
-            "standard_name": "标准名",
-            "reason": "映射理由",
-            "is_new_standard": false,
-            "action": "add（新增映射）/ modify（修改已有映射）/ remove（移除已有映射）"
-          }
-        ],
-        "new_standard_names": [
-          {
-            "name": "新标准名",
-            "category": "建议分类",
-            "reason": "创建理由"
-          }
-        ],
-        "standard_category_adjustments": [
-          {
-            "standard_name": "标准名",
-            "current_category": "当前分类",
-            "suggested_category": "建议分类",
-            "reason": "调整理由"
-          }
-        ],
-        "category_structure_changes": [
-          {
-            "action": "create（新建分类）/ merge（合并分类）/ split（拆分分类）/ rename（改分类名）/ reparent（调整父分类）",
-            "category": "分类名",
-            "target": "目标分类（合并目标/新父分类等）",
-            "reason": "调整理由"
-          }
-        ]
-      },
-      "analysis_rules": [
-        "原始名→标准名：只处理「同一事件的不同名称」，子任务与父任务的层级关系交给分类系统处理",
-        "标准名选择：最能精确描述事件内容、不易与其它事件混淆的名称，必要时可生成新的标准名",
-        "已有映射可根据更完整的数据调整（修改/移除/新增）",
-        "特殊事件「未记录」映射到特殊标准名「未记录」，归为特殊分类「未记录」",
-        "所有原始名都必须映射到一个标准名（即使同名也要显式建立映射，如「睡觉」→「睡觉」）",
-        "所有标准名都必须映射到一个分类名（即使分类名与标准名相同也要建立，如标准名「娱乐」→分类名「娱乐」）",
-        "命名唯一性：标准名之间不能相同，分类名之间不能相同",
-        "命名可重复性：标准名与分类名之间可以相同，原始名与标准名之间可以相同（本质不是同一类对象）",
-        "分类是树形结构，不能出现环路",
-        "所有标准名、分类名、映射关系由模型决定，脚本不自动创建",
-        "标准名应描述具体事件而非一类事件（如「看冬瓜强直播」而非「看直播」）"
-      ]
+      "description": "每个周期统计后执行。基于 SKILL.md 中的三层映射规则和输出格式，输出结构化 JSON 方案。只输出建议不自动执行。"
     },
     {
       "id": "generate_report",
       "name": "整理报告",
-      "description": "将统计结果和名称与分类管理方案整理为清晰易读的报告",
       "report_sections": [
         "总览（总时长、实际记录时长、未记录时长、事件数）",
-        "按分类分布（含多级分类层级）",
-        "按事件 Top 列表（基于标准名）",
+        "按分类分布",
+        "按事件 Top 列表",
         "额外事情记录（如有）",
-        "名称与分类管理建议方案（结构化JSON，含三层映射）",
+        "名称与分类管理建议方案",
         "季度分类评审建议（仅季度统计时）",
         "关键洞察和建议"
       ]
     }
   ],
   "notes": [
-    "这是定时任务自动执行，不需要用户交互",
-    "技能代码从GitHub MCP拉取（仓库级同步），数据库从飞书恢复",
-    "禁止使用已删除的 pull_from_github.py，禁止使用git命令行",
-    "拉取技能后必须重新读取 SKILL.md 确认最新命令用法",
-    "使用 stats-json 获取结构化数据，便于整理报告",
-    "名称与分类管理方案只输出建议，不自动执行",
-    "季度分类评审方案只输出建议，不自动执行",
-    "统计日期注意跨零点问题：定时任务约23:59触发，若实际执行时已过午夜（00:00-00:30），统计日期为前一天（刚结束的那天），所有周期都使用该日期作为参考日期",
-    "周期判断基于统计日期而非当前日期：统计日期是周/月/季/年的最后一天时才执行对应周期统计",
-    "若同一天有多项统计，按顺序日 → 周 → 月 → 季度 → 年依次执行",
-    "三层映射机制：原始名→标准名→分类名→父分类，所有映射由模型决定",
-    "失败即报错停止：任何环节失败时直接报错，不降级继续或使用可能过时/损坏的数据",
-    "本配置文件是 time-tracker 技能的一部分，随技能一起从GitHub拉取，无单独版本号"
+    "定时任务自动执行，不需要用户交互",
+    "使用 stats-json 获取结构化数据",
+    "统计日期注意跨零点：若执行时已过午夜（00:00-00:30），统计日期为前一天",
+    "方案只输出建议，不自动执行"
   ]
 }
