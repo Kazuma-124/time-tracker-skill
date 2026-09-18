@@ -349,8 +349,10 @@ python3 <script> quarterly-review
 
 - 仓库：GitHub 私有仓库 `Kazuma-124/time-tracker-skill`，分支 main
 - 统一使用 **GitHub MCP 连接器**，禁止使用 git 命令行
-- 修改技能文件后，更新 `VERSION` 文件版本号，然后通过 MCP 连接器做仓库级同步（增删改全部同步）
-- 新对话或定时任务开始时，先对比 VERSION，版本一致则跳过拉取
+- 详细同步流程见 `time-tracker-launcher/SKILL.md`，此处仅列要点：
+  - **拉取**：获取远程 VERSION 对比本地；版本一致则跳过，不一致则递归列出远程所有文件，全量下载覆盖本地，删除本地多余文件
+  - **上传**：更新 VERSION → 递归列出远程文件 → 全量推送所有本地文件 → 删除远程多余文件 → 验证一致
+  - **失败即停止**：MCP 调用失败不得降级使用旧版本
 
 ### 数据库同步
 
