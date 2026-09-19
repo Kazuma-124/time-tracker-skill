@@ -2,13 +2,13 @@
   "name": "晚间时间统计报告",
   "description": "柳比歇夫时间统计法 - 每日晚间统计报告生成任务",
   "created_at": "2026-09-02",
-  "updated_at": "2026-09-18",
-  "workflow": "从GitHub拉取技能代码 → 从飞书恢复数据库 → 判断统计周期 → 执行统计 → 名称与分类管理分析 → 整理报告",
+  "updated_at": "2026-09-20",
+  "workflow": "从GitHub拉取技能代码 → 从飞书恢复数据库 → 判断统计周期 → 导出周期内原始事件文本 → 模型读文本当场生成统计 → 整理报告",
   "skill_sync": {
     "repo": "Kazuma-124/time-tracker-skill",
     "branch": "main",
     "local_dir": "/home/user/.super_doubao/super-doubao-runtime/workspace/.user_skills/time-tracker/",
-    "method": "GitHub MCP 连接器（禁止使用git命令行）",
+    "method": "GitHub MCP 连接器（仓库级同步）",
     "pull_flow": [
       "调用 mcp__github__get_file_contents 获取远程 VERSION，与本地对比",
       "版本一致且关键文件存在 → 跳过拉取",
@@ -40,51 +40,40 @@
     {
       "id": "determine_periods",
       "name": "判断统计周期和统计日期",
-      "logic": "若当前时间在 00:00-00:30 之间，统计日期为前一天；否则为当天。\n\n根据统计日期判断执行哪些统计：\n- 每天执行日统计\n- 周日执行周统计\n- 当月最后一天执行月统计\n- 当季最后一天执行季度统计+季度评审\n- 当年最后一天执行年统计\n\n同一天多项统计按顺序执行：日 → 周 → 月 → 季度 → 年。所有周期使用统计日期作为参考日期。",
+      "logic": "若当前时间在 00:00-00:30 之间，统计日期为前一天；否则为当天。\n\n根据统计日期判断执行哪些统计：\n- 每天执行日统计\n- 周日执行周统计\n- 当月最后一天执行月统计\n- 当季最后一天执行季度统计\n- 当年最后一天执行年统计\n\n同一天多项统计按顺序执行：日 → 周 → 月 → 季度 → 年。所有周期使用统计日期作为参考日期。",
       "commands": {
-        "day": "python3 /home/user/.super_doubao/super-doubao-runtime/workspace/.user_skills/time-tracker/scripts/time_tracker.py stats-json day [日期]",
-        "week": "python3 /home/user/.super_doubao/super-doubao-runtime/workspace/.user_skills/time-tracker/scripts/time_tracker.py stats-json week [日期]",
-        "month": "python3 /home/user/.super_doubao/super-doubao-runtime/workspace/.user_skills/time-tracker/scripts/time_tracker.py stats-json month [日期]",
-        "quarter": "python3 /home/user/.super_doubao/super-doubao-runtime/workspace/.user_skills/time-tracker/scripts/time_tracker.py stats-json quarter [日期]",
-        "year": "python3 /home/user/.super_doubao/super-doubao-runtime/workspace/.user_skills/time-tracker/scripts/time_tracker.py stats-json year [日期]"
-      },
-      "quarterly_review_command": "python3 /home/user/.super_doubao/super-doubao-runtime/workspace/.user_skills/time-tracker/scripts/time_tracker.py quarterly-review"
+        "day": "python3 /home/user/.super_doubao/super-doubao-runtime/workspace/.user_skills/time-tracker/scripts/time_tracker.py export-period day [日期]",
+        "week": "python3 /home/user/.super_doubao/super-doubao-runtime/workspace/.user_skills/time-tracker/scripts/time_tracker.py export-period week [日期]",
+        "month": "python3 /home/user/.super_doubao/super-doubao-runtime/workspace/.user_skills/time-tracker/scripts/time_tracker.py export-period month [日期]",
+        "quarter": "python3 /home/user/.super_doubao/super-doubao-runtime/workspace/.user_skills/time-tracker/scripts/time_tracker.py export-period quarter [日期]",
+        "year": "python3 /home/user/.super_doubao/super-doubao-runtime/workspace/.user_skills/time-tracker/scripts/time_tracker.py export-period year [日期]"
+      }
     },
     {
-      "id": "execute_stats",
-      "name": "执行统计",
-      "description": "对每个需要执行的周期运行 stats-json 获取结构化数据。"
+      "id": "export_raw",
+      "name": "导出各周期原始事件文本",
+      "description": "对每个需要执行的周期运行 export-period，拿到原始事件文本。脚本只输出原始事实，不做聚合/分类。"
     },
     {
-      "id": "quarterly_review",
-      "name": "季度分类评审（仅季度统计时执行）",
-      "command": "python3 /home/user/.super_doubao/super-doubao-runtime/workspace/.user_skills/time-tracker/scripts/time_tracker.py quarterly-review",
-      "description": "输出分类调整候选方案，只输出建议不自动执行。"
-    },
-    {
-      "id": "name_category_management",
-      "name": "名称与分类管理分析",
-      "command_template": "python3 /home/user/.super_doubao/super-doubao-runtime/workspace/.user_skills/time-tracker/scripts/time_tracker.py name-check --period {period} [日期]",
-      "description": "每个周期统计后执行。基于 SKILL.md 中的三层映射规则和输出格式，输出结构化 JSON 方案。只输出建议不自动执行。"
+      "id": "model_stats",
+      "name": "模型基于原始文本当场统计",
+      "description": "模型阅读 export-period 输出的原始事件文本，自行计算：总记录时长、未记录时间缺口、按事件原始名汇总（总时长/次数/平均/占比）、备注回顾、关键洞察。结果只在本次报告中输出，不写回数据库。"
     },
     {
       "id": "generate_report",
       "name": "整理报告",
       "report_sections": [
-        "总览（总时长、实际记录时长、未记录时长、事件数）",
-        "按分类分布",
-        "按事件 Top 列表",
-        "额外事情记录（如有）",
-        "名称与分类管理建议方案",
-        "季度分类评审建议（仅季度统计时）",
+        "总览（总时长、已记录时长、未记录时长、事件数）",
+        "按事件原始名分布（总时长/次数/平均/占比）",
+        "每日实际记录时长（周/月/季/年时）",
+        "事件备注回顾（如有）",
         "关键洞察和建议"
       ]
     }
   ],
   "notes": [
     "定时任务自动执行，不需要用户交互",
-    "使用 stats-json 获取结构化数据",
-    "统计日期注意跨零点：若执行时已过午夜（00:00-00:30），统计日期为前一天",
-    "方案只输出建议，不自动执行"
+    "数据库只存原始事件，统计由模型现场读文本生成，不落库",
+    "统计日期注意跨零点：若执行时已过午夜（00:00-00:30），统计日期为前一天"
   ]
 }
