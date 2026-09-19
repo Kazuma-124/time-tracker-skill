@@ -42,7 +42,7 @@ def check_db_integrity(db_path=None):
             return False, f"完整性检查失败: {result[0]}"
         # 检查关键表是否存在
         tables = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
-        required = ["events", "current", "categories", "aliases", "standard_names"]
+        required = ["events", "current"]
         missing = [t for t in required if t not in tables]
         if missing:
             conn.close()
@@ -230,6 +230,10 @@ def sync_db_from_lark():
     保证任何对话操作的都是飞书上的最新数据，避免环境隔离导致数据不同步。
     拉取失败时返回 False，调用方应停止操作。
     """
+    # 测试模式：完全本地操作，不碰飞书
+    if config.TEST_MODE:
+        return True
+
     backup_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backup_to_lark.py")
     if not os.path.exists(backup_script):
         print("[数据同步] ❌ 备份脚本不存在，无法从飞书拉取数据库", file=sys.stderr)
@@ -293,7 +297,7 @@ def init_db():
     
     if not synced:
         raise RuntimeError("从飞书拉取数据库失败。请检查飞书备份或网络连接后重试。")
-
+    
     # 第二步：初始化表结构 + 保证时间连续
     try:
         with get_db() as conn:
@@ -387,7 +391,20 @@ def backup_database():
 
 
 def _init_db_tables(conn):
-    """初始化数据库表结构和默认数据（内部函数，由 init_db 调用）。"""
+    """初始化数据库表结构（内部函数，由 init_db 调用）。
+
+    只保存原始事件数据：
+    - events: 原始事件名、开始/结束时间、时长、用户备注
+    - current: 当前进行中的事件名与开始时间
+    不再保存标准名、分类名及其映射。
+    """
+    # 一次性迁移：删除旧版整理后的表（标准名/分类/原始名映射）
+    conn.executescript("""
+        DROP TABLE IF EXISTS standard_names;
+        DROP TABLE IF EXISTS aliases;
+        DROP TABLE IF EXISTS categories;
+    """)
+
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS events (
             id TEXT PRIMARY KEY,
@@ -395,108 +412,29 @@ def _init_db_tables(conn):
             start_time TEXT NOT NULL,
             end_time TEXT NOT NULL,
             duration_minutes REAL NOT NULL,
-            extras TEXT NOT NULL DEFAULT ''
+            note TEXT NOT NULL DEFAULT ''
         );
 
         CREATE INDEX IF NOT EXISTS idx_events_start ON events(start_time);
         CREATE INDEX IF NOT EXISTS idx_events_name ON events(name);
     """)
 
-    # 迁移：旧表没有 extras 字段时添加
+    # 迁移：列名 extras -> note；更老的库连备注列都没有时补上 note
     cols = [row[1] for row in conn.execute("PRAGMA table_info(events)").fetchall()]
-    if "extras" not in cols:
-        conn.execute("ALTER TABLE events ADD COLUMN extras TEXT NOT NULL DEFAULT ''")
-        print("[数据库迁移] events 表已添加 extras 字段", file=sys.stderr)
-
-    # 迁移：旧 categories 表没有 id/parent_id 字段时重建
-    # 先检查表是否存在（首次使用时 categories 表可能尚未创建）
-    cat_exists = conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='categories'"
-    ).fetchone()
-    if cat_exists:
-        cols = [row[1] for row in conn.execute("PRAGMA table_info(categories)").fetchall()]
-        if "id" not in cols or "parent_id" not in cols:
-            print("[数据库迁移] 重建 categories 表以支持多级分类...", file=sys.stderr)
-            # 备份旧数据
-            old_cats = conn.execute("SELECT name, keywords, description, created_at FROM categories").fetchall()
-            conn.execute("DROP TABLE categories")
-            conn.execute("""
-                CREATE TABLE categories (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT NOT NULL UNIQUE,
-                    parent_id INTEGER,
-                    keywords TEXT NOT NULL DEFAULT '[]',
-                    description TEXT NOT NULL DEFAULT '',
-                    created_at TEXT NOT NULL,
-                    FOREIGN KEY (parent_id) REFERENCES categories(id)
-                )
-            """)
-            for cat in old_cats:
-                conn.execute(
-                    "INSERT INTO categories (name, parent_id, keywords, description, created_at) VALUES (?, NULL, ?, ?, ?)",
-                    (cat["name"], cat["keywords"], cat["description"], cat["created_at"])
-                )
-            print(f"[数据库迁移] 已迁移 {len(old_cats)} 个分类", file=sys.stderr)
+    if "extras" in cols:
+        conn.execute("ALTER TABLE events RENAME COLUMN extras TO note")
+        print("[数据库迁移] events 表列 extras 已重命名为 note", file=sys.stderr)
+    elif "note" not in cols:
+        conn.execute("ALTER TABLE events ADD COLUMN note TEXT NOT NULL DEFAULT ''")
+        print("[数据库迁移] events 表已添加 note 字段", file=sys.stderr)
 
     conn.executescript("""
-
         CREATE TABLE IF NOT EXISTS current (
             id INTEGER PRIMARY KEY CHECK (id = 1),
             name TEXT NOT NULL,
             start_time TEXT NOT NULL
         );
     """)
-
-    conn.executescript("""
-        CREATE TABLE IF NOT EXISTS categories (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL UNIQUE,
-            parent_id INTEGER,
-            keywords TEXT NOT NULL DEFAULT '[]',
-            description TEXT NOT NULL DEFAULT '',
-            created_at TEXT NOT NULL,
-            FOREIGN KEY (parent_id) REFERENCES categories(id)
-        );
-
-        CREATE TABLE IF NOT EXISTS aliases (
-            alias TEXT PRIMARY KEY,
-            standard_name TEXT NOT NULL
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_aliases_standard ON aliases(standard_name);
-
-        CREATE TABLE IF NOT EXISTS standard_names (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL UNIQUE,
-            category_id INTEGER,
-            description TEXT NOT NULL DEFAULT '',
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
-            FOREIGN KEY (category_id) REFERENCES categories(id)
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_standard_names_category ON standard_names(category_id);
-    """)
-
-    # 特殊分类和标准名：未记录（时间连续性补全用）
-    conn.execute(
-        "INSERT OR IGNORE INTO categories (name, keywords, description, created_at) VALUES (?, ?, ?, ?)",
-        ("未记录", "[]", "未记录的空白时间", now_iso())
-    )
-    unrecorded_cat = conn.execute("SELECT id FROM categories WHERE name = '未记录'").fetchone()
-    if unrecorded_cat:
-        conn.execute(
-            "INSERT OR IGNORE INTO standard_names (name, category_id, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-            ("未记录", unrecorded_cat["id"], "未记录的空白时间", now_iso(), now_iso())
-        )
-    
-    # 特殊原始名映射：未记录 → 未记录（所有原始名都必须显式建立映射）
-    conn.execute(
-        "INSERT OR IGNORE INTO aliases (alias, standard_name) VALUES (?, ?)",
-        ("未记录", "未记录")
-    )
-    
-    # 注意：其他标准名和分类不再自动创建，由模型决定后手动创建
 
 
 def ensure_current_event(conn):
@@ -522,5 +460,3 @@ def ensure_current_event(conn):
         "INSERT OR REPLACE INTO current (id, name, start_time) VALUES (1, '未记录', ?)",
         (start_time,)
     )
-
-
