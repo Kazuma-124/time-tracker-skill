@@ -1,79 +1,25 @@
 {
   "name": "晚间时间统计报告",
-  "description": "柳比歇夫时间统计法 - 每日晚间统计报告生成任务",
-  "created_at": "2026-09-02",
-  "updated_at": "2026-09-20",
-  "workflow": "从GitHub拉取技能代码 → 从飞书恢复数据库 → 判断统计周期 → 导出周期内原始事件文本 → 模型读文本当场生成统计 → 整理报告",
-  "skill_sync": {
-    "repo": "Kazuma-124/time-tracker-skill",
-    "branch": "main",
-    "local_dir": "/home/user/.super_doubao/super-doubao-runtime/workspace/.user_skills/time-tracker/",
-    "method": "GitHub MCP 连接器（仓库级同步）",
-    "pull_flow": [
-      "调用 mcp__github__get_file_contents 获取远程 VERSION，与本地对比",
-      "版本一致且关键文件存在 → 跳过拉取",
-      "版本不一致 → 递归列出远程所有文件，全量覆盖写入，删除本地多余文件"
-    ]
-  },
-  "steps": [
-    {
-      "id": "pull_skill",
-      "name": "从GitHub拉取最新技能代码",
-      "method": "GitHub MCP 连接器（仓库级同步）",
-      "description": "按 skill_sync.pull_flow 执行。拉取后重新读取 SKILL.md 确认最新命令用法。",
-      "forbidden": "禁止使用 pull_from_github.py（已删除）、git clone、curl、wget"
-    },
-    {
-      "id": "restore_db",
-      "name": "从飞书恢复最新数据库",
-      "command": "python3 /home/user/.super_doubao/super-doubao-runtime/workspace/.user_skills/time-tracker/scripts/backup_to_lark.py --restore",
-      "description": "恢复失败时直接报错停止。"
-    },
-    {
-      "id": "read_docs",
-      "name": "读取技能文档",
-      "commands": [
-        "Read /home/user/.super_doubao/super-doubao-runtime/workspace/.user_skills/time-tracker/SKILL.md"
-      ],
-      "description": "拉取技能后读取 SKILL.md 确认最新命令用法。"
-    },
-    {
-      "id": "determine_periods",
-      "name": "判断统计周期和统计日期",
-      "logic": "若当前时间在 00:00-00:30 之间，统计日期为前一天；否则为当天。\n\n根据统计日期判断执行哪些统计：\n- 每天执行日统计\n- 周日执行周统计\n- 当月最后一天执行月统计\n- 当季最后一天执行季度统计\n- 当年最后一天执行年统计\n\n同一天多项统计按顺序执行：日 → 周 → 月 → 季度 → 年。所有周期使用统计日期作为参考日期。",
-      "commands": {
-        "day": "python3 /home/user/.super_doubao/super-doubao-runtime/workspace/.user_skills/time-tracker/scripts/time_tracker.py export-period day [日期]",
-        "week": "python3 /home/user/.super_doubao/super-doubao-runtime/workspace/.user_skills/time-tracker/scripts/time_tracker.py export-period week [日期]",
-        "month": "python3 /home/user/.super_doubao/super-doubao-runtime/workspace/.user_skills/time-tracker/scripts/time_tracker.py export-period month [日期]",
-        "quarter": "python3 /home/user/.super_doubao/super-doubao-runtime/workspace/.user_skills/time-tracker/scripts/time_tracker.py export-period quarter [日期]",
-        "year": "python3 /home/user/.super_doubao/super-doubao-runtime/workspace/.user_skills/time-tracker/scripts/time_tracker.py export-period year [日期]"
-      }
-    },
-    {
-      "id": "export_raw",
-      "name": "导出各周期原始事件文本",
-      "description": "对每个需要执行的周期运行 export-period，拿到原始事件文本。脚本只输出原始事实，不做聚合/分类。"
-    },
-    {
-      "id": "model_stats",
-      "name": "模型基于原始文本当场统计",
-      "description": "模型阅读 export-period 输出的原始事件文本，自行计算：总记录时长、未记录时间缺口、按事件原始名汇总（总时长/次数/平均/占比）、备注回顾、关键洞察。结果只在本次报告中输出，不写回数据库。"
-    },
-    {
-      "id": "generate_report",
-      "name": "整理报告",
-      "report_sections": [
-        "总览（总时长、已记录时长、未记录时长、事件数）",
-        "按事件原始名分布（总时长/次数/平均/占比）",
-        "每日实际记录时长（周/月/季/年时）",
-        "事件备注回顾（如有）",
-        "关键洞察和建议"
-      ]
-    }
+  "统计日期": "今天（任务 23:59 触发）",
+  "跑哪些统计": [
+    "每天：日统计",
+    "周日：加周统计",
+    "当月最后一天：加月统计",
+    "当季最后一天：加季度统计",
+    "当年最后一天：加年统计"
+  ],
+  "顺序": "日 → 周 → 月 → 季度 → 年，都用统计日期作参考日",
+  "怎么做": "读 SKILL.md，按它里面导出周期原始事件的命令，把每个要统计的周期导出成原始事件文本。数据库由脚本自动从飞书同步，不用单独恢复。",
+  "怎么算": "自己读原始文本算：总记录时长、未记录缺口、按事件名汇总（总时长/次数/平均/占比）、备注回顾、洞察。结果只在本次报告里说，不写回数据库。",
+  "报告": [
+    "总览",
+    "按事件名分布",
+    "周及以上周期：每日记录时长",
+    "备注回顾",
+    "洞察"
   ],
   "notes": [
-    "定时任务自动执行，不需要用户交互",
-    "数据库只存原始事件，统计由模型现场读文本生成，不落库",
-    "统计日期注意跨零点：若执行时已过午夜（00:00-00:30），统计日期为前一天"
+    "自动执行，不需要用户交互",
+    "脚本只出原始事实，统计由模型现场算，不落库"
   ]
 }
