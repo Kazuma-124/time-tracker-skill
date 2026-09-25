@@ -395,7 +395,7 @@ def _init_db_tables(conn):
 
     只保存原始事件数据：
     - events: 原始事件名、开始/结束时间、时长、用户备注
-    - current: 当前进行中的事件名与开始时间
+    - current: 当前进行中的事件名与开始时间、进行中累计的备注
     不再保存标准名、分类名及其映射。
     """
     # 一次性迁移：删除旧版整理后的表（标准名/分类/原始名映射）
@@ -432,9 +432,16 @@ def _init_db_tables(conn):
         CREATE TABLE IF NOT EXISTS current (
             id INTEGER PRIMARY KEY CHECK (id = 1),
             name TEXT NOT NULL,
-            start_time TEXT NOT NULL
+            start_time TEXT NOT NULL,
+            note TEXT NOT NULL DEFAULT ''
         );
     """)
+
+    # 迁移：老版 current 表没有 note 列时补上（进行中事件的备注）
+    cur_cols = [row[1] for row in conn.execute("PRAGMA table_info(current)").fetchall()]
+    if "note" not in cur_cols:
+        conn.execute("ALTER TABLE current ADD COLUMN note TEXT NOT NULL DEFAULT ''")
+        print("[数据库迁移] current 表已添加 note 字段", file=sys.stderr)
 
 
 def ensure_current_event(conn):
@@ -457,6 +464,6 @@ def ensure_current_event(conn):
         print("[时间连续性] 首次使用，已自动开始'未记录'事件", file=sys.stderr)
 
     conn.execute(
-        "INSERT OR REPLACE INTO current (id, name, start_time) VALUES (1, '未记录', ?)",
+        "INSERT OR REPLACE INTO current (id, name, start_time, note) VALUES (1, '未记录', ?, '')",
         (start_time,)
     )

@@ -12,7 +12,7 @@ import config
 from db import cleanup_local_db, ensure_data_dir
 from events import (
     cmd_start, cmd_stop, cmd_current, cmd_rename_current,
-    cmd_list_events, cmd_rename_event,
+    cmd_list_events, cmd_rename_event, cmd_note,
 )
 from export import cmd_export, cmd_export_period
 
@@ -90,6 +90,10 @@ def main():
     p_rename_ev.add_argument("event_id", help="事件ID（通过 list-events 查看）")
     p_rename_ev.add_argument("new_name", help="新的事件名称")
 
+    p_note = subparsers.add_parser("note", help="给当前进行中的事件追加备注")
+    p_note.add_argument("note", nargs="?", help="备注内容（追加到现有备注后，用；拼接）")
+    p_note.add_argument("--clear", action="store_true", help="清空当前事件的备注")
+
     p_export_period = subparsers.add_parser("export-period", help="导出周期内原始事件为文本，供模型当场统计")
     p_export_period.add_argument("period", choices=["day", "week", "month", "quarter", "year"], help="统计周期")
     p_export_period.add_argument("date", nargs="?", default=None, help="参考日期 YYYY-MM-DD（默认今天）")
@@ -115,7 +119,7 @@ def main():
 
     commands = {
         "start": cmd_start, "stop": cmd_stop, "current": cmd_current, "rename-current": cmd_rename_current,
-        "list-events": cmd_list_events, "rename-event": cmd_rename_event,
+        "list-events": cmd_list_events, "rename-event": cmd_rename_event, "note": cmd_note,
         "export-period": cmd_export_period, "export": cmd_export,
         "init-test-db": cmd_init_test_db,
     }

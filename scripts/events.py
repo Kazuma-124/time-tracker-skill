@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-事件记录命令：start, stop, current, rename, list。
+事件记录命令：start, stop, current, note, rename, list。
 只操作原始事件数据，不做分类或映射。
 """
 
@@ -24,26 +24,30 @@ def cmd_start(args):
 
     with db_transaction() as conn:
         # 结束上一个事件：记录原始名、开始时间、结束时间、持续时间
-        current = conn.execute("SELECT name, start_time FROM current WHERE id = 1").fetchone()
+        current = conn.execute("SELECT name, start_time, note FROM current WHERE id = 1").fetchone()
         if current:
             ended_name = rename_to or current["name"]
             duration = (parse_iso(end_time) - parse_iso(current["start_time"])).total_seconds() / 60.0
             event_id = str(uuid.uuid4())[:8]
+            # 合并备注：进行中累计的备注 + --note 参数追加的一句
+            ended_note = current["note"] or ""
+            if note_text:
+                ended_note = f"{ended_note}；{note_text}" if ended_note else note_text
             conn.execute(
                 "INSERT INTO events (id, name, start_time, end_time, duration_minutes, note) VALUES (?, ?, ?, ?, ?, ?)",
-                (event_id, ended_name, current["start_time"], end_time, round(duration, 1), note_text)
+                (event_id, ended_name, current["start_time"], end_time, round(duration, 1), ended_note)
             )
             print(f"[结束] {current['name']}" + (f"（改名为 {ended_name}）" if rename_to else ""))
             print(f"  时间: {parse_iso(current['start_time']).strftime('%H:%M')} ~ {parse_iso(end_time).strftime('%H:%M')}")
             print(f"  时长: {format_duration(duration)}")
-            if note_text:
-                print(f"  备注: {note_text}")
+            if ended_note:
+                print(f"  备注: {ended_note}")
         else:
             print("[提示] 此前无活跃事件，本次为首个事件。")
 
-        # 开始新事件：记录事件名称和开始时间
+        # 开始新事件：记录事件名称和开始时间，备注重置为空
         conn.execute(
-            "INSERT OR REPLACE INTO current (id, name, start_time) VALUES (1, ?, ?)",
+            "INSERT OR REPLACE INTO current (id, name, start_time, note) VALUES (1, ?, ?, '')",
             (event_name, end_time)
         )
 
@@ -55,11 +59,11 @@ def cmd_stop(args):
     """结束当前事件，并自动开始'未记录'事件（保证任何时刻都有事件在进行中）。"""
     end_time = now_iso()
     with db_transaction() as conn:
-        current = conn.execute("SELECT name, start_time FROM current WHERE id = 1").fetchone()
+        current = conn.execute("SELECT name, start_time, note FROM current WHERE id = 1").fetchone()
         if not current:
             print("当前没有活跃事件，已自动开始'未记录'事件")
             conn.execute(
-                "INSERT OR REPLACE INTO current (id, name, start_time) VALUES (1, '未记录', ?)",
+                "INSERT OR REPLACE INTO current (id, name, start_time, note) VALUES (1, '未记录', ?, '')",
                 (end_time,)
             )
             return
@@ -67,22 +71,24 @@ def cmd_stop(args):
         event_id = str(uuid.uuid4())[:8]
         conn.execute(
             "INSERT INTO events (id, name, start_time, end_time, duration_minutes, note) VALUES (?, ?, ?, ?, ?, ?)",
-            (event_id, current["name"], current["start_time"], end_time, round(duration, 1), "")
+            (event_id, current["name"], current["start_time"], end_time, round(duration, 1), current["note"] or "")
         )
         # 自动开始"未记录"事件，保证时间连续
         conn.execute(
-            "INSERT OR REPLACE INTO current (id, name, start_time) VALUES (1, '未记录', ?)",
+            "INSERT OR REPLACE INTO current (id, name, start_time, note) VALUES (1, '未记录', ?, '')",
             (end_time,)
         )
     print(f"[结束] {current['name']}")
     print(f"  时长: {format_duration(duration)}")
+    if current["note"]:
+        print(f"  备注: {current['note']}")
     print(f"  已自动开始'未记录'事件（时间连续不中断）")
 
 
 def cmd_current(args):
     init_db()
     with get_db() as conn:
-        current = conn.execute("SELECT name, start_time FROM current WHERE id = 1").fetchone()
+        current = conn.execute("SELECT name, start_time, note FROM current WHERE id = 1").fetchone()
         if not current:
             print("当前没有活跃事件")
             return
@@ -90,6 +96,36 @@ def cmd_current(args):
     print(f"[进行中] {current['name']}")
     print(f"  开始时间: {current['start_time']}")
     print(f"  已持续: {format_duration(elapsed)}")
+    if current["note"]:
+        print(f"  备注: {current['note']}")
+
+
+def cmd_note(args):
+    """给当前进行中的事件追加备注（流水式，用；拼接）。"""
+    if args.clear:
+        with db_transaction() as conn:
+            current = conn.execute("SELECT name FROM current WHERE id = 1").fetchone()
+            if not current:
+                print("当前没有活跃事件，无法清空备注")
+                return
+            conn.execute("UPDATE current SET note = '' WHERE id = 1")
+        print("✅ 已清空当前事件的备注")
+        return
+
+    new_note = (args.note or "").strip()
+    if not new_note:
+        print("错误: 备注内容不能为空（用 --clear 清空）")
+        return
+    with db_transaction() as conn:
+        current = conn.execute("SELECT note FROM current WHERE id = 1").fetchone()
+        if not current:
+            print("当前没有活跃事件，无法加备注")
+            return
+        old_note = current["note"] or ""
+        merged = f"{old_note}；{new_note}" if old_note else new_note
+        conn.execute("UPDATE current SET note = ? WHERE id = 1", (merged,))
+    print(f"✅ 已追加备注: {new_note}")
+    print(f"   当前备注全文: {merged}")
 
 
 def cmd_rename_current(args):
